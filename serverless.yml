@@ -1,0 +1,135 @@
+service: datalake-api-sample
+
+package:
+  individually: true
+  exclude:
+  - node_modules/**  
+  - architectureimage/**
+
+layers:
+  AthenaLayer:
+    path: layers/athena_layer
+    name: ${self:provider.stage}-athena-layer
+    compatibleRuntimes:
+      - python3.6
+    description: Layer used to run Athena queries
+
+provider:
+  name: aws
+  runtime: python3.6
+  stackName: ${self:provider.stage}-datalake-apis
+  stage: ${opt:stage, 'dev'}
+  environment:
+    QUERY_BUCKET: s3://${self:custom.bucket_queries_name}
+    DATABASE_NAME: ${self:custom.database_name}
+  iamRoleStatements:
+      - Effect: "Allow"
+        Action: 
+          - athena:*
+          - glue:GetTable
+          - glue:GetTables
+        Resource: "*"
+      - Effect: "Allow"
+        Action: 
+          - s3:PutObject
+          - s3:GetObject
+          - s3:ListBucketByTags
+          - s3:ListBucketMultipartUploads
+          - s3:GetBucketTagging
+          - s3:GetObjectTagging
+          - s3:ListBucket
+          - s3:GetBucketLocation
+        Resource: "*"
+
+functions:
+  top-viewed-listings:
+    handler: lambdas/top-viewed-listings.lambda_handler
+    timeout: 30
+    layers:
+      - {Ref: AthenaLayerLambdaLayer}
+    events:
+      - http:
+          path: /top-viewed-listings
+          method: get
+
+  most-searched-term:
+    handler: lambdas/most-searched-term.lambda_handler
+    timeout: 30
+    layers:
+      - {Ref: AthenaLayerLambdaLayer}
+    events:
+      - http:
+          path: /most-searched-term
+          method: get
+
+custom:
+  s3Sync:
+    - bucketName: ${self:custom.bucket_data_name}
+      bucketPrefix: data/
+      localDir: data
+  remover:
+     buckets:
+       - ${self:custom.bucket_queries_name}
+  database_name: apidatabase
+  bucket_data_name: ${opt:account}-${self:provider.stage}-data
+  bucket_queries_name: ${opt:account}-${self:provider.stage}-queries          
+
+resources:
+  Resources:
+    S3BucketStoreQueries:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucket_queries_name}
+    S3BucketStoreData:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucket_data_name}
+    GlueDatabase:
+      Type: AWS::Glue::Database
+      Properties:
+        DatabaseInput: 
+          Name: apidatabase
+        CatalogId: "${opt:account}"
+    TopViewedListingsGlueTable:
+      Type: AWS::Glue::Table
+      DependsOn : GlueDatabase
+      Properties:
+        TableInput:
+          Name: top_viewed_listings
+          StorageDescriptor:
+            Location: "s3://${self:custom.bucket_data_name}/data/top-viewed-listings"
+            InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+            OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+            SerdeInfo:
+              SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+              Parameters:
+                serialization.format: 1
+            Columns:
+              - {Name: listingid, Type: bigint}
+              - {Name: timestamp, Type: string}
+              - {Name: listingtitle, Type: string}
+        DatabaseName: apidatabase
+        CatalogId: "${opt:account}"     
+    MostSearchedTermsGlueTable:
+      Type: AWS::Glue::Table
+      DependsOn : GlueDatabase
+      Properties:
+        TableInput:
+          Name: most_searched_terms
+          StorageDescriptor:
+            Location: "s3://${self:custom.bucket_data_name}/data/most-searched-terms"
+            InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+            OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+            SerdeInfo:
+              SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+              Parameters:
+                serialization.format: 1
+            Columns:
+              - {Name: search_term, Type: string}
+              - {Name: search_count, Type: int}
+        DatabaseName: apidatabase
+        CatalogId: "${opt:account}"
+
+plugins:
+  - serverless-s3-sync
+  - serverless-s3-remover
