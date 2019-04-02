@@ -25,7 +25,6 @@ What is deployed as part of this service:
 - Glue Tables
 - S3 Bucket + Data Upload
 - API Gateway Endpoints
-
 <a name="requirements"/>
 ## Requirements
 
