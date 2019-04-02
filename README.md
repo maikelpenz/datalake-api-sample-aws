@@ -26,7 +26,7 @@ What is deployed as part of this service:
 - S3 Bucket + Data Upload
 - API Gateway Endpoints
 <a name="requirements"/>
-## Requirements
+## Requirements 
 
 - [Node.js and NPM](https://www.npmjs.com/get-npm) 
 
